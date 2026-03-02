@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hitha Voice AI</title>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.17.2/dist/livekit-client.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f1117;
+      color: #e4e4e7;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #1a1b23;
+      border: 1px solid #2a2b35;
+      border-radius: 16px;
+      padding: 40px;
+      width: 420px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #fff;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #71717a;
+      margin-bottom: 28px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #a1a1aa;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f1117;
+      border: 1px solid #2a2b35;
+      border-radius: 8px;
+      color: #e4e4e7;
+      font-size: 14px;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: #6366f1; }
+    button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    button:hover { opacity: .9; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    #connectBtn {
+      background: #6366f1;
+      color: #fff;
+    }
+    #disconnectBtn {
+      background: #ef4444;
+      color: #fff;
+      margin-top: 8px;
+      display: none;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: #0f1117;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #71717a;
+      flex-shrink: 0;
+    }
+    .dot.connected { background: #22c55e; }
+    .dot.connecting { background: #eab308; }
+    .dot.error { background: #ef4444; }
+    .log-area {
+      margin-top: 16px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 12px;
+      background: #0f1117;
+      border-radius: 8px;
+      font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #a1a1aa;
+    }
+    .log-area .info { color: #6366f1; }
+    .log-area .warn { color: #eab308; }
+    .log-area .err { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Hitha Voice AI</h1>
+    <p class="subtitle">Connect to test the voice agent</p>
+
+    <label for="room">Room Name</label>
+    <input id="room" type="text" value="test-room" />
+
+    <label for="identity">Your Identity</label>
+    <input id="identity" type="text" value="user-1" />
+
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn">Disconnect</button>
+
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Disconnected</span>
+    </div>
+
+    <div class="log-area" id="log"></div>
+  </div>
+
+  <script>
+    const { Room, RoomEvent, Track } = LivekitClient;
+
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const roomInput = document.getElementById('room');
+    const identityInput = document.getElementById('identity');
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('statusText');
+    const logArea = document.getElementById('log');
+
+    let room = null;
+
+    function log(msg, cls = '') {
+      const line = document.createElement('div');
+      if (cls) line.className = cls;
+      const ts = new Date().toLocaleTimeString();
+      line.textContent = `[${ts}] ${msg}`;
+      logArea.appendChild(line);
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function setStatus(text, state) {
+      statusText.textContent = text;
+      dot.className = 'dot ' + state;
+    }
+
+    function attachTrack(track, participant) {
+      if (track.kind === Track.Kind.Audio) {
+        const el = track.attach();
+        el.id = 'agent-audio';
+        document.body.appendChild(el);
+        log(`Playing audio from ${participant.identity}`, 'info');
+      }
+    }
+
+    connectBtn.addEventListener('click', async () => {
+      const roomName = roomInput.value.trim();
+      const identity = identityInput.value.trim();
+      if (!roomName || !identity) return;
+
+      connectBtn.disabled = true;
+      setStatus('Fetching token...', 'connecting');
+      log('Requesting token...');
+
+      try {
+        const resp = await fetch(`/token?room=${encodeURIComponent(roomName)}&identity=${encodeURIComponent(identity)}`);
+        if (!resp.ok) throw new Error(`Token request failed: ${resp.status}`);
+        const { token, url } = await resp.json();
+        log('Token received');
+
+        room = new Room({ audioCaptureDefaults: { autoGainControl: true, noiseSuppression: true } });
+
+        room.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+          attachTrack(track, participant);
+        });
+
+        room.on(RoomEvent.TrackUnsubscribed, (track) => {
+          track.detach().forEach(el => el.remove());
+          log('Track detached');
+        });
+
+        room.on(RoomEvent.Disconnected, (reason) => {
+          log(`Disconnected: ${reason || 'unknown'}`, 'warn');
+          setStatus('Disconnected', '');
+          connectBtn.disabled = false;
+          connectBtn.style.display = '';
+          disconnectBtn.style.display = 'none';
+        });
+
+        room.on(RoomEvent.ParticipantConnected, (p) => {
+          log(`Participant joined: ${p.identity}`, 'info');
+        });
+
+        room.on(RoomEvent.ParticipantDisconnected, (p) => {
+          log(`Participant left: ${p.identity}`, 'warn');
+        });
+
+        setStatus('Connecting to LiveKit...', 'connecting');
+        log(`Connecting to ${url.split('//')[1] || url}...`);
+
+        await room.connect(url, token);
+        log('Connected to room: ' + roomName, 'info');
+
+        setStatus('Enabling microphone...', 'connecting');
+        await room.localParticipant.setMicrophoneEnabled(true);
+        log('Microphone enabled', 'info');
+
+        setStatus('Connected', 'connected');
+        connectBtn.style.display = 'none';
+        disconnectBtn.style.display = '';
+
+        room.remoteParticipants.forEach((participant) => {
+          participant.trackPublications.forEach((pub) => {
+            if (pub.track && pub.isSubscribed) {
+              attachTrack(pub.track, participant);
+            }
+          });
+        });
+
+      } catch (e) {
+        log(`Error: ${e.message}`, 'err');
+        setStatus('Error', 'error');
+        connectBtn.disabled = false;
+      }
+    });
+
+    disconnectBtn.addEventListener('click', async () => {
+      if (room) {
+        await room.disconnect();
+        room = null;
+        log('Disconnected by user');
+      }
+      setStatus('Disconnected', '');
+      connectBtn.disabled = false;
+      connectBtn.style.display = '';
+      disconnectBtn.style.display = 'none';
+    });
+  </script>
+</body>
+</html>
