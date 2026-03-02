@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Token"])
 
 
-@router.get("/token")
+@router.get("/api/token")
 async def get_token(
     room: str = Query(..., min_length=1, description="LiveKit room name"),
     identity: str = Query(..., min_length=1, description="Participant identity"),

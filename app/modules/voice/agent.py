@@ -37,6 +37,7 @@ from livekit.agents import AutoSubscribe, JobContext
 
 from app.modules.conversation.engine import ConversationEngine
 from app.modules.conversation.service import ConversationService
+from app.modules.dashboard.service import DashboardService
 from app.modules.database.session import async_session_factory
 from app.modules.llm.gemini_adapter import GeminiAdapter
 from app.modules.response.generator import ResponseGenerator
@@ -203,6 +204,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     async with async_session_factory() as session:
         svc = ConversationService(session)
+        dash_svc = DashboardService(session)
         adapter = GeminiAdapter()
         engine = ConversationEngine(svc, adapter)
         response_gen = ResponseGenerator()
@@ -212,10 +214,16 @@ async def entrypoint(ctx: JobContext) -> None:
             language="en",
             livekit_room_id=room_id,
         )
+        await dash_svc.create_call_log(
+            call_id=call_id,
+            caller_name=participant.identity or "Unknown",
+            direction="inbound",
+        )
         logger.info(
-            "Conversation created — call_id=%s room_id=%s",
+            "Conversation + call log created — call_id=%s room_id=%s",
             call_id, room_id,
         )
+        appointment_id: str | None = None
 
         voice_session = VoiceSession(
             call_id=call_id,
@@ -276,6 +284,7 @@ async def entrypoint(ctx: JobContext) -> None:
         stt = stt_instance
 
         async def on_transcript(text: str, is_final: bool) -> None:
+            nonlocal appointment_id
             action = await voice_session.handle_transcript(text, is_final=is_final)
             if not action:
                 return
@@ -284,9 +293,25 @@ async def entrypoint(ctx: JobContext) -> None:
             lang = state.language if state else "en"
             response_text = response_gen.generate(action, lang)
 
+            voice_session.add_assistant_turn(response_text)
+
             logger.info(
                 "[%s] Response (%s): %s", call_id, lang, response_text[:120],
             )
+
+            if action.get("action") == "FINALIZE_BOOKING" and state:
+                try:
+                    booking = state.booking.model_dump()
+                    apt = await dash_svc.create_appointment_from_booking(
+                        call_id=call_id,
+                        booking_data=booking,
+                    )
+                    appointment_id = apt.id
+                    logger.info(
+                        "[%s] Appointment auto-created: %s", call_id, apt.id,
+                    )
+                except Exception:
+                    logger.exception("[%s] Failed to auto-create appointment", call_id)
 
             asyncio.create_task(
                 _safe_speak(tts, response_text, lang, call_id),
@@ -373,6 +398,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
         # ── Initial greeting ──────────────────────────────────────
         greeting = response_gen.generate({"action": "GREETING"}, "en")
+        voice_session.add_assistant_turn(greeting)
         logger.info("[%s] Greeting: %s", call_id, greeting[:120])
         asyncio.create_task(
             _safe_speak(tts, greeting, "en", call_id),
@@ -399,6 +425,34 @@ async def entrypoint(ctx: JobContext) -> None:
                 await task
             except asyncio.CancelledError:
                 pass
+
+        # ── Finalize call log ─────────────────────────────────────
+        try:
+            final_state = await svc.load_state(call_id)
+            status = "completed"
+            if final_state and final_state.escalated:
+                status = "transferred"
+
+            caller_name = None
+            languages = None
+            if final_state:
+                bd = final_state.booking.model_dump()
+                if bd.get("patient_name"):
+                    caller_name = bd["patient_name"]
+                lang_code = final_state.language or "en"
+                languages = [DashboardService.language_display(lang_code)]
+
+            await dash_svc.finalize_call_log(
+                call_id=call_id,
+                transcript=voice_session.get_transcript(),
+                status=status,
+                caller_name=caller_name,
+                languages=languages,
+                appointment_id=appointment_id,
+            )
+            logger.info("[%s] Call log finalized (status=%s)", call_id, status)
+        except Exception:
+            logger.exception("[%s] Failed to finalize call log", call_id)
 
     logger.info("[%s] Job complete", call_id)
 

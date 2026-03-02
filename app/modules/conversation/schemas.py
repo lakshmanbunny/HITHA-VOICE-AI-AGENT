@@ -29,7 +29,6 @@ class BookingDetails(BaseModel):
     preferred_date: Optional[str] = None
     preferred_time: Optional[str] = None
     patient_name: Optional[str] = None
-    phone_number: Optional[str] = None
 
 
 REQUIRED_SLOTS: dict[CallIntent, list[str]] = {

@@ -8,7 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.appointments import router as appointments_router
+from app.api.calls import router as calls_router
+from app.api.doctors import router as doctors_router
 from app.api.health import router as health_router
+from app.api.stats import router as stats_router
 from app.api.token import router as token_router
 from app.config.settings import settings
 from app.core.logging import setup_logging
@@ -45,6 +49,10 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(token_router)
+app.include_router(stats_router)
+app.include_router(calls_router)
+app.include_router(appointments_router)
+app.include_router(doctors_router)
 
 
 @app.get("/", include_in_schema=False)

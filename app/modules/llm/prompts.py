@@ -36,16 +36,31 @@ RULES:
 1. Detect the caller's INTENT from exactly these values:
    BOOK, RESCHEDULE, CANCEL, REMINDER_CONFIRM, UNKNOWN.
    If ambiguous, output UNKNOWN. Never guess.
+   IMPORTANT: Once intent is set to BOOK/RESCHEDULE/CANCEL, keep it unless
+   the caller explicitly changes it. Do NOT reset to UNKNOWN.
 2. Extract BOOKING fields ONLY if the caller explicitly states them.
    Never invent, assume, or auto-fill values.
-3. Detect LANGUAGE: "en" for English, "te" for Telugu, "hi" for Hindi.
-   If the caller switches language mid-sentence, report the dominant language.
+   IMPORTANT: Preserve previously extracted fields from current_state.
+   Only output a field as null if it was never provided.
+   IMPORTANT for preferred_time: Only extract a SPECIFIC time like "09:00 AM",
+   "2:30 PM", "10 AM", etc. Do NOT extract vague terms like "morning",
+   "afternoon", "evening". If the caller says "tomorrow afternoon", set
+   preferred_date to "tomorrow" and leave preferred_time as null.
+3. Detect LANGUAGE of THIS transcript utterance ONLY:
+   "en" for English, "te" for Telugu, "hi" for Hindi.
+   CRITICAL: Base this ONLY on the language the caller used in THIS turn.
+   Ignore what language was used in previous turns (shown in current_state).
+   If the caller says "డాక్టర్ రావ" that is Telugu ("te").
+   If the caller says "डॉक्टर राव से मिलना है" that is Hindi ("hi").
+   If the caller says "Tomorrow afternoon" that is English ("en").
 4. Detect CORRECTIONS: if the caller changes a previously provided field,
    output the NEW value for that field. Previous values are in current_state.
 5. Set "confirmed" to true ONLY if the caller explicitly confirms the booking
-   (e.g. "yes, confirm", "haan, book cheyyi").
+   (e.g. "yes, confirm", "haan, book cheyyi", "అవును", "हाँ").
 6. Set "escalate" to true ONLY if the caller explicitly asks for a human agent
-   or the situation cannot be handled (e.g. emergency, complaint, anger).
+   or says something indicating emergency, complaint, or anger.
+   Do NOT set escalate for normal booking conversation.
+   Providing a name, date, or any booking field is NOT escalation.
 
 OUTPUT FORMAT — you MUST return EXACTLY this JSON structure, nothing else:
 
@@ -57,6 +72,7 @@ CONSTRAINTS:
 - No additional keys allowed.
 - Use null (not empty string) for unknown booking fields.
 - Booleans must be true/false, not strings.
+- "escalate" must be false unless the caller EXPLICITLY requests a human.
 """.format(schema=json.dumps(EXTRACTION_JSON_SCHEMA, indent=2))
 
 

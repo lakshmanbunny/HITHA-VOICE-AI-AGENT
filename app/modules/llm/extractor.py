@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from app.modules.conversation.schemas import (
@@ -11,6 +12,13 @@ from app.modules.llm.base import BaseLLMAdapter
 from app.modules.llm.prompts import VALID_BOOKING_KEYS
 
 logger = logging.getLogger(__name__)
+
+_VAGUE_TIME_PATTERNS = re.compile(
+    r"^(morning|afternoon|evening|night|noon|midday|"
+    r"सुबह|दोपहर|शाम|रात|"
+    r"ఉదయం|మధ్యాహ్నం|సాయంత్రం|రాత్రి)$",
+    re.IGNORECASE,
+)
 
 
 class ExtractionError(Exception):
@@ -73,7 +81,12 @@ def _sanitise(raw: dict) -> dict[str, Any]:
         if value is None or value == "":
             booking[key] = None
         elif isinstance(value, str):
-            booking[key] = value.strip()
+            cleaned = value.strip()
+            if key == "preferred_time" and _VAGUE_TIME_PATTERNS.match(cleaned):
+                logger.info("Rejecting vague preferred_time %r, setting to null", cleaned)
+                booking[key] = None
+            else:
+                booking[key] = cleaned
         else:
             raise ExtractionError(
                 f"Booking field {key!r} must be string or null, got {type(value).__name__}"

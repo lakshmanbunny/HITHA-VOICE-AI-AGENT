@@ -9,6 +9,7 @@ from app.modules.conversation.schemas import (
     REQUIRED_SLOTS,
 )
 from app.modules.conversation.service import ConversationService
+from app.modules.dashboard.doctors_data import get_available_slots
 from app.modules.llm.base import BaseLLMAdapter
 from app.modules.llm.extractor import run_extraction
 
@@ -155,7 +156,18 @@ class ConversationEngine:
             return {"action": "FINALIZE_BOOKING"}
 
         if missing is not None:
-            return {"action": "ASK_SLOT", "slot": missing}
+            action: dict[str, Any] = {"action": "ASK_SLOT", "slot": missing}
+            if missing == "preferred_time":
+                doctor_name = state.booking.doctor
+                action["available_slots"] = get_available_slots(doctor_name)
+            return action
+
+        if state.intent != CallIntent.UNKNOWN:
+            booking = state.booking.model_dump()
+            return {
+                "action": "CONFIRM",
+                "booking": {k: v for k, v in booking.items() if v},
+            }
 
         return {"action": "CONTINUE"}
 

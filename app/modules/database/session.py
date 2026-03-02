@@ -18,6 +18,7 @@ async_session_factory = async_sessionmaker(
 
 async def init_db() -> None:
     import app.modules.conversation.models  # noqa: F401 — register tables with Base
+    import app.modules.dashboard.models  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

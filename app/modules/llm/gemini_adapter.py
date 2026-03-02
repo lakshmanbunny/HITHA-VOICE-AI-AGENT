@@ -108,15 +108,14 @@ class GeminiAdapter(BaseLLMAdapter):
 
         missing_bk = VALID_BOOKING_KEYS - booking_keys
         if missing_bk:
-            raise ExtractionValidationError(
-                f"Missing booking keys: {sorted(missing_bk)}"
-            )
+            for k in missing_bk:
+                data["booking"][k] = None
 
         extra_bk = booking_keys - VALID_BOOKING_KEYS
         if extra_bk:
-            raise ExtractionValidationError(
-                f"Unknown booking keys: {sorted(extra_bk)}"
-            )
+            logger.warning("Stripping unknown booking keys from LLM output: %s", sorted(extra_bk))
+            for k in extra_bk:
+                del data["booking"][k]
 
         if not isinstance(data["confirmed"], bool):
             raise ExtractionValidationError(

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Hitha Voice AI"
     DATABASE_URL: str = "sqlite+aiosqlite:///./hitha.db"
     DEBUG: bool = False
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000"]
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000", "http://localhost:8080"]
 
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"

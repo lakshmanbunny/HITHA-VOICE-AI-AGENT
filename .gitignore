@@ -29,5 +29,9 @@ Thumbs.db
 .DS_Store
 
 # Project-specific exclusions
-call-harmony-plus-main/
 agent.log
+
+# Frontend build artifacts
+call-harmony-plus-main/node_modules/
+call-harmony-plus-main/dist/
+call-harmony-plus-main/.vite/
